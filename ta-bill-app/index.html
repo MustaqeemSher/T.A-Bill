@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f3a5f">
+<title>T.A. Bill – Sayyed Engineers Limited</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#fff; --ink:#1b2430; --muted:#667085; --line:#d9dfe7;
+    --brand:#1f3a5f; --brand2:#2d5a94; --danger:#b42318; --ok:#067647;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg);padding-bottom:env(safe-area-inset-bottom)}
+  header.top{background:var(--brand);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+  header.top h1{font-size:17px;margin:0;flex:1;font-weight:600}
+  header.top small{display:block;font-weight:400;opacity:.8;font-size:12px}
+  main{max-width:680px;margin:0 auto;padding:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+  label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:0 0 4px}
+  input,select,textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--brand2);outline-offset:0;border-color:var(--brand2)}
+  textarea{resize:none;overflow:hidden;min-height:44px}
+  .field{margin-bottom:12px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:12px 16px;cursor:pointer;background:var(--brand);color:#fff}
+  button.secondary{background:#e8edf4;color:var(--brand)}
+  button.danger{background:#fdecea;color:var(--danger)}
+  button.ghost{background:transparent;color:#fff;padding:8px 10px;font-weight:500}
+  button:disabled{opacity:.6}
+  button.block{width:100%}
+  .row-card{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;background:#fbfcfe}
+  .row-card .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:600;color:var(--brand)}
+  .row-card .head button{padding:6px 10px;font-size:14px}
+  .bill-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px;border:1px solid var(--line);border-radius:10px;background:#fff;margin-bottom:10px;cursor:pointer}
+  .bill-item:active{background:#f0f4fa}
+  .bill-item b{display:block}
+  .bill-item span{color:var(--muted);font-size:14px}
+  .amt{font-weight:700;white-space:nowrap}
+  .total-bar{display:flex;justify-content:space-between;align-items:baseline;font-size:18px;font-weight:700;color:var(--brand)}
+  .actions{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);padding:14px 0 calc(8px + env(safe-area-inset-bottom));display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .msg{padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:14px}
+  .msg.err{background:#fdecea;color:var(--danger)}
+  .msg.ok{background:#e7f6ee;color:var(--ok)}
+  .msg.info{background:#fff6e0;color:#8a5a00}
+  h2{font-size:18px;margin:0 0 12px}
+  .center{text-align:center}
+  .muted{color:var(--muted);font-size:14px}
+  .login{max-width:420px;margin:8vh auto 0}
+  .login h2{font-size:22px}
+  .code{letter-spacing:.4em;text-align:center;font-size:22px}
+</style>
+</head>
+<body>
+<header class="top" id="topbar" hidden>
+  <h1>T.A. Bill<small id="who"></small></h1>
+  <button class="ghost" id="btnSignOut">Sign out</button>
+</header>
+<main id="app"></main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="pdf.js"></script>
+<script>
+/* ================= CONFIG =================
+   Paste your Supabase project values here (see README.md).
+   Leave empty to try the app in DEMO mode (data stays only in this browser). */
+const SUPABASE_URL = 'https://qihaoznpyrqaujpuoiyd.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_6fXkmSN_xGFmTqd6Zaa2-g_T7xdxBLJ';
+/* ========================================== */
+
+const CONFIGURED = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+const sb = CONFIGURED ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const today = () => new Date().toISOString().slice(0, 10);
+const money = n => (Number(n) || 0).toLocaleString('en-PK', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+/* ---------- storage adapters ---------- */
+const store = CONFIGURED ? {
+  async list() {
+    const { data, error } = await sb.rpc('ta_list', { p_email: state.user.email });
+    if (error) throw error; return data || [];
+  },
+  async save(b) {
+    const payload = { bill_date: b.bill_date || null, name: b.name, designation: b.designation, purpose: b.purpose,
+      advance: num(b.advance), da_days: num(b.da_days), da_rate: num(b.da_rate), rows: b.rows };
+    const { data, error } = await sb.rpc('ta_save', { p_email: state.user.email, p_id: b.id || null, p_bill: payload });
+    if (error) throw error; return data;
+  },
+  async remove(id) { const { error } = await sb.rpc('ta_delete', { p_email: state.user.email, p_id: id }); if (error) throw error; }
+} : {
+  _k: () => 'ta_bills_demo_' + (state.user?.email || ''),
+  _all() { try { return JSON.parse(localStorage.getItem(this._k()) || '[]'); } catch { return []; } },
+  async list() { return this._all().sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')); },
+  async save(b) {
+    const all = this._all(); const now = new Date().toISOString();
+    if (b.id) { const i = all.findIndex(x => x.id === b.id); b = { ...all[i], ...b, updated_at: now }; all[i] = b; }
+    else { b = { ...b, id: 'd' + Date.now(), created_at: now, updated_at: now }; all.push(b); }
+    localStorage.setItem(this._k(), JSON.stringify(all)); return b;
+  },
+  async remove(id) { localStorage.setItem(this._k(), JSON.stringify(this._all().filter(x => x.id !== id))); }
+};
+const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+
+/* ---------- state ---------- */
+const state = { user: null, bills: [], bill: null, email: '', msg: null };
+
+function blankRow() { return { date: today(), time: '', kind: '', particulars: '', amount: '' }; }
+function newBill() {
+  const last = state.bills[0];
+  return { id: null, bill_date: today(), name: last?.name || '', designation: last?.designation || '',
+    purpose: '', advance: '', da_days: '', da_rate: '', rows: [blankRow()] };
+}
+function billTotalCents(b) {
+  const rows = (b.rows || []).reduce((s, r) => s + Math.round(num(r.amount) * 100), 0);
+  return rows + Math.round(num(b.da_days) * Math.round(num(b.da_rate) * 100));
+}
+function setMsg(type, text) { state.msg = text ? { type, text } : null; }
+function msgHtml() { return state.msg ? `<div class="msg ${state.msg.type}">${esc(state.msg.text)}</div>` : ''; }
+
+/* ---------- auth (email only, no verification) ---------- */
+function initAuth() {
+  let e = null; try { e = localStorage.getItem('ta_email'); } catch {}
+  state.user = e ? { email: e } : null;
+  go();
+}
+function sendCode() {   // "Continue" button: just signs in with the typed email
+  const email = $('#email').value.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) { state.email = email; setMsg('err', 'Please enter a valid email address.'); return render(); }
+  try { localStorage.setItem('ta_email', email); } catch {}
+  state.user = { email }; setMsg(null); go();
+}
+function signOut() {
+  try { localStorage.removeItem('ta_email'); } catch {}
+  state.user = null; state.bills = []; state.bill = null; setMsg(null); go();
+}
+
+/* ---------- navigation ---------- */
+async function go() {
+  $('#topbar').hidden = !state.user;
+  $('#who').textContent = state.user ? state.user.email + (CONFIGURED ? '' : ' (demo)') : '';
+  if (!state.user) { state.bill = null; return render(); }
+  try { state.bills = await store.list(); } catch (e) { setMsg('err', 'Could not load your bills: ' + e.message); }
+  state.bill = null; render();
+}
+
+/* ---------- views ---------- */
+function render() {
+  const app = $('#app');
+  if (!state.user) return app.innerHTML = loginView();
+  app.innerHTML = state.bill ? editorView() : listView();
+  if (state.bill) { autoGrowAll(); updateTotal(); }
+}
+function loginView() {
+  const demo = CONFIGURED ? '' : `<div class="msg info">Demo mode: no database is connected yet, so bills are saved only in this browser. See README.md to connect the real database.</div>`;
+  return `<div class="login card">
+    <h2>Sayyed Engineers Limited</h2>
+    <p class="muted">Enter your email to see your T.A. Bills and create new ones.</p>
+    ${demo}${msgHtml()}
+    <div class="field"><label for="email">Email address</label>
+    <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@company.com" value="${esc(state.email)}"></div>
+    <button class="block" data-act="sendCode">Continue</button>
+  </div>`;
+}
+function listView() {
+  const items = state.bills.map(b => `
+    <div class="bill-item" data-act="open" data-id="${esc(b.id)}">
+      <div><b>${esc(b.purpose || 'Untitled bill')}</b><span>${esc(window.TABillUtil.fmtDate(b.bill_date))} · ${(b.rows || []).length} entr${(b.rows || []).length === 1 ? 'y' : 'ies'}</span></div>
+      <div class="amt">Rs ${money(billTotalCents(b) / 100)}</div>
+    </div>`).join('');
+  return `${msgHtml()}
+    <button class="block" data-act="new">+ Create new T.A. Bill</button>
+    <h2 style="margin-top:18px">My bills</h2>
+    ${items || '<div class="card muted center">No bills yet. Tap “Create new T.A. Bill” to start.</div>'}`;
+}
+function rowHtml(r, i) {
+  return `<div class="row-card" data-i="${i}">
+    <div class="head"><span>Entry ${i + 1}</span><button class="danger" data-act="delRow" data-i="${i}">Remove</button></div>
+    <div class="grid2">
+      <div class="field"><label>Date</label><input type="date" data-row="date" value="${esc(r.date)}"></div>
+      <div class="field"><label>Time</label><input type="time" data-row="time" value="${esc(r.time)}"></div>
+    </div>
+    <div class="field"><label>Departure / Arrival</label>
+      <select data-row="kind">
+        <option value="" ${!r.kind ? 'selected' : ''}>—</option>
+        <option value="dep" ${r.kind === 'dep' ? 'selected' : ''}>Departure</option>
+        <option value="arr" ${r.kind === 'arr' ? 'selected' : ''}>Arrival</option>
+      </select></div>
+    <div class="field"><label>Particulars</label><textarea data-row="particulars" maxlength="400" placeholder="e.g. Lahore to Karachi by air">${esc(r.particulars)}</textarea></div>
+    <div class="field" style="margin-bottom:0"><label>Amount (Rs)</label><input type="number" inputmode="decimal" step="0.01" min="0" data-row="amount" value="${esc(r.amount)}"></div>
+  </div>`;
+}
+function editorView() {
+  const b = state.bill;
+  return `${msgHtml()}
+  <div style="margin-bottom:10px"><button class="secondary" data-act="back2list">← All bills</button></div>
+  <div class="card">
+    <h2>${b.id ? 'Edit T.A. Bill' : 'New T.A. Bill'}</h2>
+    <div class="field"><label>Date</label><input type="date" data-f="bill_date" value="${esc(b.bill_date)}"></div>
+    <div class="field"><label>Name</label><input data-f="name" autocomplete="name" value="${esc(b.name)}"></div>
+    <div class="field"><label>Designation</label><input data-f="designation" value="${esc(b.designation)}"></div>
+    <div class="field" style="margin-bottom:0"><label>Purpose</label><textarea data-f="purpose" maxlength="300" placeholder="Purpose of the journey">${esc(b.purpose)}</textarea></div>
+  </div>
+  <h2>Entries</h2>
+  <div id="rows">${b.rows.map(rowHtml).join('')}</div>
+  <button class="secondary block" data-act="addRow">+ Add another entry</button>
+  <div class="card" style="margin-top:14px">
+    <div class="field"><label>Advance taken (Rs)</label><input type="number" inputmode="decimal" step="0.01" min="0" data-f="advance" value="${esc(b.advance)}"></div>
+    <div class="grid2">
+      <div class="field" style="margin-bottom:0"><label>D.A for (days)</label><input type="number" inputmode="decimal" step="0.5" min="0" data-f="da_days" value="${esc(b.da_days)}"></div>
+      <div class="field" style="margin-bottom:0"><label>@ Rs (per day)</label><input type="number" inputmode="decimal" step="0.01" min="0" data-f="da_rate" value="${esc(b.da_rate)}"></div>
+    </div>
+  </div>
+  <div class="card total-bar"><span>Total</span><span id="total">Rs 0.00</span></div>
+  <div class="actions">
+    <button class="secondary" data-act="save">Save</button>
+    <button data-act="pdf">Print / PDF</button>
+  </div>
+  ${b.id ? '<p class="center"><button class="danger" data-act="delBill">Delete this bill</button></p>' : ''}`;
+}
+function updateTotal() { const el = $('#total'); if (el) el.textContent = 'Rs ' + money(billTotalCents(state.bill) / 100); }
+function autoGrow(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; }
+function autoGrowAll() { document.querySelectorAll('textarea').forEach(autoGrow); }
+
+/* ---------- actions ---------- */
+function validate(b) {
+  if (!b.name.trim()) return 'Please enter your name.';
+  if (!b.bill_date) return 'Please choose the bill date.';
+  return null;
+}
+async function saveBill(quiet) {
+  const b = state.bill, err = validate(b);
+  if (err) { setMsg('err', err); render(); window.scrollTo(0, 0); return false; }
+  try {
+    state.bill = await store.save(b);
+    state.bill.rows = state.bill.rows || [];
+    if (!quiet) { setMsg('ok', 'Saved.'); }
+    state.bills = await store.list();
+    return true;
+  } catch (e) { setMsg('err', 'Could not save: ' + e.message); render(); window.scrollTo(0, 0); return false; }
+}
+async function makePdf() {
+  if (!(await saveBill(true))) return;
+  const b = state.bill;
+  const doc = window.buildTABillPDF(window.jspdf.jsPDF, b);
+  const safe = (b.name || 'bill').replace(/[^\w\-]+/g, '_');
+  doc.save(`TA-Bill_${safe}_${b.bill_date || ''}.pdf`);
+  setMsg('ok', 'Saved and PDF created. Open the downloaded file to print it.'); render(); window.scrollTo(0, 0);
+}
+
+document.addEventListener('click', async e => {
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const act = t.dataset.act;
+  if (act === 'sendCode') return sendCode();
+  if (act === 'new') { state.bill = newBill(); setMsg(null); render(); return window.scrollTo(0, 0); }
+  if (act === 'open') { state.bill = JSON.parse(JSON.stringify(state.bills.find(b => b.id === t.dataset.id))); if (!state.bill.rows.length) state.bill.rows = [blankRow()]; setMsg(null); render(); return window.scrollTo(0, 0); }
+  if (act === 'back2list') { setMsg(null); state.bill = null; return render(); }
+  if (act === 'addRow') { const last = state.bill.rows.at(-1); state.bill.rows.push({ ...blankRow(), date: last?.date || today() }); render(); return window.scrollTo(0, document.body.scrollHeight); }
+  if (act === 'delRow') { state.bill.rows.splice(+t.dataset.i, 1); if (!state.bill.rows.length) state.bill.rows.push(blankRow()); return render(); }
+  if (act === 'save') { t.disabled = true; const ok = await saveBill(); if (ok) { render(); window.scrollTo(0, 0); } return; }
+  if (act === 'pdf') { t.disabled = true; await makePdf(); return; }
+  if (act === 'delBill') {
+    if (!confirm('Delete this bill permanently?')) return;
+    try { await store.remove(state.bill.id); state.bills = await store.list(); state.bill = null; setMsg('ok', 'Bill deleted.'); render(); }
+    catch (err) { setMsg('err', err.message); render(); }
+  }
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.tagName === 'TEXTAREA') autoGrow(t);
+  if (!state.bill) return;
+  if (t.dataset.f) state.bill[t.dataset.f] = t.value;
+  else if (t.dataset.row) { const i = +t.closest('.row-card').dataset.i; state.bill.rows[i][t.dataset.row] = t.value; }
+  else return;
+  updateTotal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || state.user) return;
+  if (e.target.id === 'email') sendCode();
+});
+$('#btnSignOut').addEventListener('click', signOut);
+initAuth();
+</script>
+</body>
+</html>
